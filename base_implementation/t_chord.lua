@@ -21,7 +21,7 @@ debug = true
 debug_level = {
 	main=false,
 	tman_init=false,
-	active_tman=true,
+	active_tman=false,
 	passive_tman=false,
 	selectPeer=false,
 	rank_view=false,
@@ -337,7 +337,7 @@ end
 
 
 n = {}
-m = 8--32
+m = 32
 num_successors = 8
 tchord_debug = false
 predecessor = nil
@@ -541,15 +541,16 @@ end
 ******************************************************************************
 ]]
 
-l = 8 --node degree
-m_t = 5 --strange m value in the paper?
+
 tman_view = {}
 tman_active_thread_period = 20
+tman_cycle = 0
 
 tman_passive_active_lock = events.lock()
 
 function active_tman()
 	tman_passive_active_lock:lock()
+	tman_cycle = tman_cycle +1
 	logD("selecting a peer from the tman_view","active_tman")
 	local p = selectPeer(tman_view)
 	logD("selected peer ID="..p.id,"active_tman")
@@ -563,8 +564,8 @@ function active_tman()
 	else
 		log:print("Tman exchange failed! error message:"..r)
 	end
+	log:print("ClosestAverage: cycle "..tman_cycle.." average "..average_closest_tman())
 	tman_passive_active_lock:unlock()
-	--print_tman_table(tman_view)
 end
 
 function passive_tman(message,q)
@@ -582,8 +583,8 @@ end
 function selectPeer(S)
 	logD("ranking the tman_view","selectPeer")
 	local temp = rank_view(S,n.id)
-	logD("returning a random peer from the first "..m_t,"selectPeer")
-	return temp[math.random(m_t)]
+	logD("returning a random peer from the first "..num_successors,"selectPeer")
+	return temp[math.random(num_successors)]
 end
 
 --ranks the nodes in S based on distance to q and returns the nearest m
@@ -591,8 +592,8 @@ function extractMessage(S,q)
 	logD("ranking the tman_view in relation to q ID="..q.id,"extractMessage")
 	local sorted = rank_view(S,q.id)
 	local message = {}
-	logD("selecting the nearest "..m_t.." peers","extractMessage")
-	for i=1,m_t do
+	logD("selecting the nearest "..num_successors.." peers","extractMessage")
+	for i=1,num_successors do
 		table.insert(message,sorted[i])
 	end
 	logD("Returning the message:","extractMessage")
@@ -697,7 +698,7 @@ end
 
 --[[
 ******************************************************************************
-                         UTILITIES
+                         UTILITIES/EVALUATION
 ******************************************************************************
 ]]
 
@@ -707,6 +708,16 @@ function print_tman_table(t)
 		log:print("  "..i.." : ".."["..t[i].ip..":"..t[i].port.."] - id: "..t[i].id)
 	end
 	log:print("]")
+end
+
+--calcuates the average of the cloasest items in the tman viev
+function average_closest_tman()
+	local temp = extractMessage(tman_view,n)
+	local sum = 0
+	for i=1, num_successors do
+	sum = sum + math.min(math.abs(temp[i].id-n.id),((2^m)-math.abs(temp[i].id-n.id)))
+	end
+	return sum/num_successors
 end
 
 
@@ -720,7 +731,7 @@ end
 function terminator()
 	log:print("node "..job.position.." will end in 10min")
 	events.sleep(600)
-	print_chord()
+	--print_chord()
 	os.exit()
 end
 
