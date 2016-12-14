@@ -24,6 +24,6 @@ rm -fr logs
 touch logs
 for (( CNTR=1;CNTR<$daemons+1; CNTR+=1 )); do
   echo "Launching daemon number: $CNTR"
-  lua chord.lua $CNTR $daemons &>>logs &
+  lua t_chord.lua $CNTR $daemons &>>logs &
   echo "DONE"
 done

@@ -1,0 +1,16 @@
+Workpalan Chord on Demand:
+
+Task 1: Implement T-Man and bootstrap Cord from T-Man.
+PSS and Chord provided by Assistant.
+
+Task 2:
+Plot the average distance of the local node to the items in the T-Man view over time.
+
+Task 3:
+Compare the number of stale reference of Cord and T-Cord under churn conditions.
+
+Task 4:
+Compare the routing efficiency of chord and T-Cord (hops per lookup)
+
+Task 5:
+Bootstrap efficiency under churn conditions. Plot the number of nodes that are not optimal nodes.

@@ -323,8 +323,7 @@ tchord_debug = false
 predecessor = nil
 successors = {}
 finger = {}
-tchord_view = {}
-tchord_active_thread_period = 20
+
 
 
 
@@ -509,6 +508,123 @@ function print_chord()
 	end
 end
 
+-- computes the sha1 hash of a node and converts the hex output into a number
+-- when not using multiples of 4 for m this results in a smaller hash space than expected
+function compute_hash(node)
+	local o = (node.ip..":"..tostring(node.port))
+	return tonumber(string.sub(crypto.evp.new("sha1"):digest(o), 1, m / 4), 16)
+end
+
+--[[
+******************************************************************************
+                         T-MAN
+******************************************************************************
+]]
+
+l = 8 --node degree
+m_t = 5 --strange m value in the paper?
+tman_view = {}
+tman_active_thread_period = 20
+
+tman_passive_active_lock = events.lock()
+
+function active_tman()
+	tman_passive_active_lock:lock()
+	local p = selectPeer(tman_view)
+	local message = extractMessage(tman_view,p)
+	tman_view = merge(tman_view, rpc.call(p, {"passive_tman", message, n}))
+	tman_passive_active_lock:unlock()
+	print_tman_table(tman_view)
+end
+
+function passive_tman(message,q)
+	tman_passive_active_lock:lock()
+	local answer = extractMessage(tman_view,q)
+	tman_view = merge(message,tman_view)
+	tman_passive_active_lock:unlock()
+	return answer
+end
+
+--ranks the nodes in S based on distance to n and returns a random node from the nearest m
+function selectPeer(S)
+	local temp = ranking(S,n)
+	return temp[math.random(m_t)]
+end
+
+--ranks the nodes in S based on distance to q and returns the nearest m
+function extractMessage(S,q)
+	local sorted = ranking(S,q)
+	local message = {}
+	for i=1,m_t do
+		table.insert(message,sorted[i])
+	end
+	return message
+end
+
+--returns the union of the sets S1 and S2
+function merge(S1, S2)
+	for i=1,#S2 do S1[#S1+1] = S2[i] end
+	
+	table.sort(S1,function(a,b) return a.id < b.id end)
+	for i=1,#S1 do
+		while S1[i]==S1[i+1] do
+			table.remove(S1,i+1)
+		end
+	end
+	return S1
+end
+
+tman_ranking_lock = events.lock()
+
+--ranks the nodes in S based on the distace to r
+function ranking(S,r)
+	tman_ranking_lock:lock()
+	ranking_base = r
+	local temp = misc.dup(S)
+	table.sort(temp,sorting(a,b))
+	tman_ranking_lock:unlock()
+	return temp
+end
+
+function sorting(a,b)
+	local da = math.min(math.abs(a.id-r.id),((2^m)-math.abs(a.id-r.id)))
+	local db = math.min(math.abs(b.id-r.id),((2^m)-math.abs(b.id-r.id)))
+	return da < db
+end
+
+
+
+
+--[[
+******************************************************************************
+                         T-MAN -- API
+******************************************************************************
+]]
+
+function tman_init()
+	--copy pss view
+	tman_view = {ip=job.me.ip,port=job.me.port,id=compute_hash(job.me)}
+	for i=1,#view do
+		table.insert(tman_view,{ip=view[i].peer.ip,port=view[i].peer.port,id=compute_hash(view[i].peer)})
+	end
+	active_thread_tman = events.periodic(active_tman,tman_active_thread_period)
+end
+
+--[[
+******************************************************************************
+                         UTILITIES
+******************************************************************************
+]]
+
+function print_tman_table(t)
+	log:print("[ (size "..#t..")")
+	for i=1,#t do
+		log:print("  "..i.." : ".."["..t[i].ip..":"..t[i].port.."] - id: "..t[i].id)
+	end
+	log:print("]")
+end
+
+
 
 --[[
 ******************************************************************************
@@ -525,8 +641,11 @@ end
 
 
 function main ()
-	events.thread(terminator) 
-
+	events.thread(terminator)
+	pss_init()
+	while not pss_initialized do
+		events.sleep(1)
+	tman_init()
 end
 
 events.thread(main)  
