@@ -15,6 +15,26 @@ if not job then
 	end
 end
 
+-- addition for debugging
+
+debug = true
+debug_level = {
+	main=false,
+	tman_init=false,
+	active_tman=true,
+	passive_tman=false,
+	selectPeer=false,
+	rank_view=false,
+	extractMessage=false,
+	merge=false
+	}
+
+function logD(message,level)
+	if debug and debug_level[level] then
+		log:print(level.."()	"..message)
+	end
+end
+
 rpc.server(job.me.port)
 
 --[[
@@ -317,7 +337,7 @@ end
 
 
 n = {}
-m = 32
+m = 8--32
 num_successors = 8
 tchord_debug = false
 predecessor = nil
@@ -530,46 +550,72 @@ tman_passive_active_lock = events.lock()
 
 function active_tman()
 	tman_passive_active_lock:lock()
+	logD("selecting a peer from the tman_view","active_tman")
 	local p = selectPeer(tman_view)
+	logD("selected peer ID="..p.id,"active_tman")
+	logD("Extracting message","active_tman")
 	local message = extractMessage(tman_view,p)
-	tman_view = merge(tman_view, rpc.call(p, {"passive_tman", message, n}))
+	logD("Sending message and merging answer into view","active_tman")
+	tman_view = merge(rpc.call(p, {"passive_tman", message, n}),tman_view)
 	tman_passive_active_lock:unlock()
-	print_tman_table(tman_view)
+	--print_tman_table(tman_view)
 end
 
 function passive_tman(message,q)
 	tman_passive_active_lock:lock()
+	logD("Extracting message","passive_tman")
 	local answer = extractMessage(tman_view,q)
+	logD("Merging View and recieved message","passive_tman")
 	tman_view = merge(message,tman_view)
 	tman_passive_active_lock:unlock()
+	logD("Returning answer message","passive_tman")
 	return answer
 end
 
 --ranks the nodes in S based on distance to n and returns a random node from the nearest m
 function selectPeer(S)
-	local temp = ranking(S,n)
+	logD("ranking the tman_view","selectPeer")
+	local temp = rank_view(S,n.id)
+	logD("returning a random peer from the first "..m_t,"selectPeer")
 	return temp[math.random(m_t)]
 end
 
 --ranks the nodes in S based on distance to q and returns the nearest m
 function extractMessage(S,q)
-	local sorted = ranking(S,q)
+	logD("ranking the tman_view in relation to q ID="..q.id,"extractMessage")
+	local sorted = rank_view(S,q.id)
 	local message = {}
+	logD("selecting the nearest "..m_t.." peers","extractMessage")
 	for i=1,m_t do
 		table.insert(message,sorted[i])
+	end
+	logD("Returning the message:","extractMessage")
+	if debug and debug_level["extractMessage"] then
+		print_tman_table(message)
 	end
 	return message
 end
 
 --returns the union of the sets S1 and S2
 function merge(S1, S2)
-	for i=1,#S2 do S1[#S1+1] = S2[i] end
-	
-	table.sort(S1,function(a,b) return a.id < b.id end)
-	for i=1,#S1 do
-		while S1[i]==S1[i+1] do
-			table.remove(S1,i+1)
+	logD("Merging the tables S1 and S2","merge")
+	if debug and debug_level["merge"] then
+		log:print("S1:")
+		print_tman_table(S1)
+		log:print("S2:")
+		print_tman_table(S2)
+	end
+	logD("Iterating over S2","merge")
+	for i=1, #S2 do
+		logD("Check if item "..i.." is not in S1","merge")
+		if not table.contains(S1, S2[i]) then
+			logD("Inserting item"..i.." into S1","merge")
+			table.insert(S1,S2[i])
 		end
+	end
+	logD("Returning the merged table:","merge")
+	if debug and debug_level["merge"] then
+		print_tman_table(S1)
 	end
 	return S1
 end
@@ -577,19 +623,39 @@ end
 tman_ranking_lock = events.lock()
 
 --ranks the nodes in S based on the distace to r
-function ranking(S,r)
+function rank_view(S,r)
 	tman_ranking_lock:lock()
 	ranking_base = r
+	logD("View to be ranked in relation to ID"..ranking_base,"rank_view")
+	if debug and debug_level["rank_view"] then
+		print_tman_table(S)
+	end
+	logD("createing copy of view","rank_view")
 	local temp = misc.dup(S)
-	table.sort(temp,sorting(a,b))
+	logD("sorting the copy","rank_view")
+	table.sort(temp,function(a,b) return distance(a) < distance(b) end)
+	logD("Sorted view:","rank_view")
+	if debug and debug_level["rank_view"] then
+		print_tman_table(temp)
+	end
 	tman_ranking_lock:unlock()
+	logD("returning sorted view","rank_view")
 	return temp
 end
 
-function sorting(a,b)
-	local da = math.min(math.abs(a.id-r.id),((2^m)-math.abs(a.id-r.id)))
-	local db = math.min(math.abs(b.id-r.id),((2^m)-math.abs(b.id-r.id)))
-	return da < db
+--calculates the distance of the node to the ranking_base
+function distance(node)
+	return math.min(math.abs(node.id-ranking_base),((2^m)-math.abs(node.id-ranking_base)))
+end
+
+
+function table.contains(table, element)
+ 	for _, value in pairs(table) do
+		if value.id == element.id then
+		return true
+		end
+	end
+ 	return false
 end
 
 
@@ -602,11 +668,24 @@ end
 ]]
 
 function tman_init()
-	--copy pss view
-	tman_view = {ip=job.me.ip,port=job.me.port,id=compute_hash(job.me)}
+	logD("Generating my ID and saving it into n","tman_init")
+	n = {ip=job.me.ip,port=job.me.port,id=compute_hash(job.me)}
+	log:print("My ID="..n.id)
+	logD("Initialize tman view","tman_init")
+	logD("Adding myself","tman_init")
+	table.insert(tman_view,n)
+	logD("Copying the pss view, changing the datastructure and calculating chord IDs","tman_init")
 	for i=1,#view do
 		table.insert(tman_view,{ip=view[i].peer.ip,port=view[i].peer.port,id=compute_hash(view[i].peer)})
 	end
+	--log:print("My chord ID="..compute_hash(job.me))
+	logD("Initial tman view:","tman_init")
+	if debug and debug_level["tman_init"] then
+		print_tman_table(tman_view)
+	end
+	log:print("T-man initialized\nWaitng for other nodes to initialize t-man")
+	events.sleep(10)
+	log:print("Starting periodic active tman thread")
 	active_thread_tman = events.periodic(active_tman,tman_active_thread_period)
 end
 
@@ -642,10 +721,18 @@ end
 
 function main ()
 	events.thread(terminator)
+	log:print("Initializing pss")
 	pss_init()
 	while not pss_initialized do
 		events.sleep(1)
+	end
+	log:print("pss initialized")
+	if debug and debug_level["main"] then
+		print_table(view)
+	end
+	log:print("Initializing tman")
 	tman_init()
+	events.sleep(20)
 end
 
 events.thread(main)  
