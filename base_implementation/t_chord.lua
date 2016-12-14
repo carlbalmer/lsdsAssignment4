@@ -640,7 +640,7 @@ function rank_view(S,r)
 	logD("createing copy of view","rank_view")
 	local temp = misc.dup(S)
 	logD("sorting the copy","rank_view")
-	table.sort(temp,function(a,b) return distance(a) < distance(b) end)
+	table.sort(temp,function(a,b) return math.min(math.abs(a.id-ranking_base),((2^m)-math.abs(a.id-ranking_base))) < math.min(math.abs(b.id-ranking_base),((2^m)-math.abs(b.id-ranking_base))) end)
 	logD("Sorted view:","rank_view")
 	if debug and debug_level["rank_view"] then
 		print_tman_table(temp)
@@ -648,11 +648,6 @@ function rank_view(S,r)
 	tman_ranking_lock:unlock()
 	logD("returning sorted view","rank_view")
 	return temp
-end
-
---calculates the distance of the node to the ranking_base
-function distance(node)
-	return math.min(math.abs(node.id-ranking_base),((2^m)-math.abs(node.id-ranking_base)))
 end
 
 
