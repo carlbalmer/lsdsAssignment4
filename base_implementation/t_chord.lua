@@ -555,8 +555,14 @@ function active_tman()
 	logD("selected peer ID="..p.id,"active_tman")
 	logD("Extracting message","active_tman")
 	local message = extractMessage(tman_view,p)
-	logD("Sending message and merging answer into view","active_tman")
-	tman_view = merge(rpc.call(p, {"passive_tman", message, n}),tman_view)
+	logD("Sending message","active_tman")
+	local ok, r = rpc.acall(p, {"passive_tman", message, n})
+	if ok then
+		logD("merging answer into view","active_tman")
+		tman_view = merge(r[1],tman_view)
+	else
+		log:print("Tman exchange failed! error message:"..r)
+	end
 	tman_passive_active_lock:unlock()
 	--print_tman_table(tman_view)
 end
