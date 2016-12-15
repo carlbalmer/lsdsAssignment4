@@ -769,18 +769,12 @@ end
 
 function job_nodes_to_view()
 	local temp = {}
-	local alive = {}
-	if job.position == 1 then
-		alive = job.nodes
-	else
-		alive = rpc.call(job.nodes[1],getAlive)  --WHY does this shit not work
---If the nodes try to get the alive list from ńode1, then for some STUPID reason node 1 throws an error at line 825
-	end
-	for i=1, #alive do
-		if not alive[i].died then
-			table.insert(temp,{ip=alive[i].ip,port=alive[i].port,id=compute_hash(alive[i])})
+	for i=1, #job.nodes do
+		if rpc.ping(job.nodes[i],5) then
+			table.insert(temp,{ip=job.nodes[i].ip,port=job.nodes[i].port,id=compute_hash(job.nodes[i])})
 		end
 	end
+	log:print("Alive nodes"..#temp)
 	return temp
 end
 
@@ -815,50 +809,6 @@ function is_follower(a,b)
 	end
 end
 
-function churn_server()
-	local networkSize = #job.nodes
-	local churnfactor = 4
-	local nodes = misc.dup(job.nodes)
-
-	log:print("starting churn")
-	for i=2, (networkSize/churnfactor) do
-		events.thread(function() rpc.call(nodes[i], "please_stop") end)
-		job.nodes[i].died = true
-		events.sleep(tman_active_thread_period/((networkSize/churnfactor)/25))
-		log:print(tostring(#(job_nodes_to_view())))
-	end
-end
-
-function please_stop()
-	job.me.died = true
-	os.exit()
-end
-
-function getAlive()
-	return job.nodes
-end
-
--- conducts a specified ammout of querries and prints out the number of hops
-
-function searchQuerries(ammount, interval)
-  for i=1, ammount do
-    countHops(find_predecessor(compute_hash(tostring(math.random()))).id, 0)
-    events.sleep(interval)
-  end
-  logS("Finished the Querries")
-end
-
--- counts the hops needet to reach another node in the ring
-function countHops(id, index)
-  if id == n.id then
-    logS("hops="..index)
-  else
-    rpc.call(closest_preceding_finger((id+1)%(2^m)), {'countHops', id, (index +1)})
-  end
-end
-
-
-
 --[[
 ******************************************************************************
                          THIS IS WHERE YOUR CODE GOES
@@ -886,11 +836,6 @@ function main ()
 	end
 	log:print("Initializing tman")
 	tman_init()
-	log:print("Blub")
-	if job.position == 1 then
-		log:print("starting churn server")
-		events.thread(churn_server)
-	end
 	--events.sleep(400)
 	--log:print("bootstraping chord")
 	--bootstrap_chord()
