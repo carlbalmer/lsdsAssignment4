@@ -26,7 +26,7 @@ debug_level = {
 	selectPeer=false,
 	rank_view=false,
 	extractMessage=false,
-	merge=false
+	merge=false,
 	bootstrap_chord=true,
 	extract_view=true,
 	printClosestAverage=false
@@ -522,13 +522,15 @@ end
 
 
 function print_chord()
-	log:print("local_node: "..tchord_nodeid2str(n))
-	log:print("predecessor: "..tchord_nodeid2str(predecessor))
+	log:print("local_node: "..n.id)
+	log:print("predecessor: "..predecessor.id)
 
-	log:print("successor: "..tchord_nodeid2str(finger[1].node))
+	for i = 1, #successors do
+		log:print("successor "..i.." : "..successors[i].id)
+	end
 
-	for i = 1, m do
-		log:print("finger"..i..": start:"..finger[i].start..", node: "..tchord_nodeid2str(finger[i].node))
+	for i = 1, #finger do
+		log:print("finger "..i..": start:"..finger[i].start..", node: "..finger[i].node.id)
 	end
 end
 
@@ -704,7 +706,7 @@ function bootstrap_chord()
 end
 
 function extract_view(view)
-	local temp = view
+	local temp = misc.dup(view)
 	logD("Sorting the tman view","extract_view")
 	table.sort(temp,function(a,b) return ((a.id-n.id)%(2^m)) < ((b.id-n.id)%(2^m)) end)
 	if debug and debug_level["extract_view"] then
@@ -726,8 +728,8 @@ function extract_view(view)
 		}
 	end
 	logD("extracting fingers","extract_view")
-	for i, #temp_fingers do
-		for j, #temp do
+	for i=1, #temp_fingers do
+		for j=1, #temp do
 			if temp_fingers[i].start < temp[j].id then
 				temp_fingers[i].node = temp[j]
 				break
@@ -804,6 +806,7 @@ function main ()
 	if not (debug and debug_level["bootstrap_chord"]) then
 		print_chord()
 	end
+	os.exit()
 end
 
 events.thread(main)  

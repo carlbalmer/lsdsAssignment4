@@ -17,6 +17,29 @@ end
 
 rpc.server(job.me.port)
 
+-- addition for debugging
+
+debug = true
+debug_level = {
+	main=false,
+	tman_init=false,
+	active_tman=false,
+	passive_tman=false,
+	selectPeer=false,
+	rank_view=false,
+	extractMessage=false,
+	merge=false,
+	bootstrap_chord=true,
+	extract_view=true,
+	printClosestAverage=false
+	}
+
+function logD(message,level)
+	if debug and debug_level[level] then
+		log:print(level.."()	"..message)
+	end
+end
+
 --[[
 ******************************************************************************
                            PEER SAMPLING PARAMETERS
@@ -500,12 +523,15 @@ end
 
 
 function print_chord()
-	log:print("predecessor: "..tchord_nodeid2str(predecessor))
+	log:print("local_node: "..n.id)
+	log:print("predecessor: "..predecessor.id)
 
-	log:print("successor: "..tchord_nodeid2str(finger[1].node))
+	for i = 1, #successors do
+		log:print("successor "..i.." : "..successors[i].id)
+	end
 
-	for i = 1, m do
-		log:print("finger"..i..": start:"..finger[i].start..", node: "..tchord_nodeid2str(finger[i].node))
+	for i = 1, #finger do
+		log:print("finger "..i..": start:"..finger[i].start..", node: "..finger[i].node.id)
 	end
 end
 
@@ -516,16 +542,72 @@ end
 ******************************************************************************
 ]]
 
+function bootstrap_chord()
+	logD("extracting chord links from tman view","bootstrap_chord")
+	predecessor, successors, finger = extract_view(job_nodes_to_view)
+	if debug and debug_level["bootstrap_chord"] then
+		print_chord()
+	end
+end
+
+function extract_view(view)
+	local temp = view
+	logD("Sorting the tman view","extract_view")
+	table.sort(temp,function(a,b) return ((a.id-n.id)%(2^m)) < ((b.id-n.id)%(2^m)) end)
+	if debug and debug_level["extract_view"] then
+		print_tman_table(temp)
+	end
+	local temp_predecessor = nil
+	local temp_sucessors = {}
+	local temp_fingers = {}
+	logD("extracting predecessor","extract_view")
+	temp_predecessor = temp[#temp]
+	logD("extracting successors","extract_view")
+	for i=2, num_successors+1 do
+		table.insert(temp_sucessors, temp[i])
+	end
+	logD("generating finger starts","extract_view")
+	for i = 1, m do
+		temp_fingers[i] = {
+			start = (n.id + 2^(i-1))%2^m
+		}
+	end
+	logD("extracting fingers","extract_view")
+	for i, #temp_fingers do
+		for j, #temp do
+			if temp_fingers[i].start < temp[j].id then
+				temp_fingers[i].node = temp[j]
+				break
+			end
+		end
+	end
+	return temp_predecessor, temp_sucessors, temp_fingers
+end
+
+
+function job_nodes_to_view()
+	local temp = misc.dup(job.nodes)
+	for i=1, #temp do
+		if rpc.ping(temp[i]) then
+		temp[i].id = compute_hash(temp[i])
+	end
+	return temp
+end
+
 function terminator()
 	log:print("node "..job.position.." will end in 10min")
 	events.sleep(600)
-	print_chord()
+	log:print("Terminator Exiting")
 	os.exit()
 end
 
 
 function main ()
-
+	events.sleep(20)
+	testview = job_nodes_to_view()
+	log:print(#testview)
+	-bootstrap_chord()
+	os.exit()
 end
 
 events.thread(main)  
