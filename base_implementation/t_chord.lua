@@ -27,6 +27,9 @@ debug_level = {
 	rank_view=false,
 	extractMessage=false,
 	merge=false
+	bootstrap_chord=true,
+	extract_view=true,
+	printClosestAverage=false
 	}
 
 function logD(message,level)
@@ -519,6 +522,7 @@ end
 
 
 function print_chord()
+	log:print("local_node: "..tchord_nodeid2str(n))
 	log:print("predecessor: "..tchord_nodeid2str(predecessor))
 
 	log:print("successor: "..tchord_nodeid2str(finger[1].node))
@@ -564,7 +568,7 @@ function active_tman()
 	else
 		log:print("Tman exchange failed! error message:"..r)
 	end
-	log:print("ClosestAverage: cycle "..tman_cycle.." average "..average_closest_tman())
+	logD("ClosestAverage: cycle "..tman_cycle.." average "..average_closest_tman(),"printClosestAverage")
 	tman_passive_active_lock:unlock()
 end
 
@@ -691,6 +695,48 @@ function tman_init()
 	active_thread_tman = events.periodic(active_tman,tman_active_thread_period)
 end
 
+function bootstrap_chord()
+	logD("extracting chord links from tman view","bootstrap_chord")
+	predecessor, successors, finger = extract_view(tman_view)
+	if debug and debug_level["bootstrap_chord"] then
+		print_chord()
+	end
+end
+
+function extract_view(view)
+	local temp = view
+	logD("Sorting the tman view","extract_view")
+	table.sort(temp,function(a,b) return ((a.id-n.id)%(2^m)) < ((b.id-n.id)%(2^m)) end)
+	if debug and debug_level["extract_view"] then
+		print_tman_table(temp)
+	end
+	local temp_predecessor = nil
+	local temp_sucessors = {}
+	local temp_fingers = {}
+	logD("extracting predecessor","extract_view")
+	temp_predecessor = temp[#temp]
+	logD("extracting successors","extract_view")
+	for i=2, num_successors+1 do
+		table.insert(temp_sucessors, temp[i])
+	end
+	logD("generating finger starts","extract_view")
+	for i = 1, m do
+		temp_fingers[i] = {
+			start = (n.id + 2^(i-1))%2^m
+		}
+	end
+	logD("extracting fingers","extract_view")
+	for i, #temp_fingers do
+		for j, #temp do
+			if temp_fingers[i].start < temp[j].id then
+				temp_fingers[i].node = temp[j]
+				break
+			end
+		end
+	end
+	return temp_predecessor, temp_sucessors, temp_fingers
+end
+
 --[[
 ******************************************************************************
                          UTILITIES/EVALUATION
@@ -705,7 +751,7 @@ function print_tman_table(t)
 	log:print("]")
 end
 
---calcuates the average of the cloasest items in the tman viev
+--calcuates the average of the closest items in the tman viev
 function average_closest_tman()
 	local temp = extractMessage(tman_view,n)
 	local sum = 0
@@ -713,6 +759,14 @@ function average_closest_tman()
 	sum = sum + math.min(math.abs(temp[i].id-n.id),((2^m)-math.abs(temp[i].id-n.id)))
 	end
 	return sum/num_successors
+end
+
+function is_follower(a,b)
+	if ((a-b+(2^m))%(2^m)) < (2^(m-1)) then
+		return true
+	else
+		return false
+	end
 end
 
 
@@ -726,7 +780,7 @@ end
 function terminator()
 	log:print("node "..job.position.." will end in 10min")
 	events.sleep(600)
-	--print_chord()
+	log:print("Terminator Exiting")
 	os.exit()
 end
 
@@ -744,7 +798,12 @@ function main ()
 	end
 	log:print("Initializing tman")
 	tman_init()
-	events.sleep(20)
+	events.sleep(400)
+	log:print("bootstraping chord")
+	bootstrap_chord()
+	if not (debug and debug_level["bootstrap_chord"]) then
+		print_chord()
+	end
 end
 
 events.thread(main)  
