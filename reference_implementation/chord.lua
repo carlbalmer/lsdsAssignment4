@@ -30,7 +30,7 @@ debug_level = {
 	extractMessage=false,
 	merge=false,
 	bootstrap_chord=true,
-	extract_view=true,
+	extract_view=false,
 	printClosestAverage=false
 	}
 
@@ -542,16 +542,24 @@ end
 ******************************************************************************
 ]]
 
+-- computes the sha1 hash of a node and converts the hex output into a number
+-- when not using multiples of 4 for m this results in a smaller hash space than expected
+function compute_hash(node)
+	local o = (node.ip..":"..tostring(node.port))
+	return tonumber(string.sub(crypto.evp.new("sha1"):digest(o), 1, m / 4), 16)
+end
+
 function bootstrap_chord()
+	n = {ip=job.me.ip,port=job.me.port,id=compute_hash(job.me)}
 	logD("extracting chord links from tman view","bootstrap_chord")
-	predecessor, successors, finger = extract_view(job_nodes_to_view)
+	predecessor, successors, finger = extract_view(job_nodes_to_view())
 	if debug and debug_level["bootstrap_chord"] then
 		print_chord()
 	end
 end
 
 function extract_view(view)
-	local temp = view
+	local temp = misc.dup(view)
 	logD("Sorting the tman view","extract_view")
 	table.sort(temp,function(a,b) return ((a.id-n.id)%(2^m)) < ((b.id-n.id)%(2^m)) end)
 	if debug and debug_level["extract_view"] then
@@ -573,8 +581,8 @@ function extract_view(view)
 		}
 	end
 	logD("extracting fingers","extract_view")
-	for i, #temp_fingers do
-		for j, #temp do
+	for i=1, #temp_fingers do
+		for j=1, #temp do
 			if temp_fingers[i].start < temp[j].id then
 				temp_fingers[i].node = temp[j]
 				break
@@ -585,13 +593,40 @@ function extract_view(view)
 end
 
 
+
 function job_nodes_to_view()
-	local temp = misc.dup(job.nodes)
-	for i=1, #temp do
-		if rpc.ping(temp[i]) then
-		temp[i].id = compute_hash(temp[i])
+	local temp = {}
+	for i=1, #job.nodes do
+		if not job.nodes[i].died then
+			table.insert(temp,{ip=job.nodes[i].ip,port=job.nodes[i].port,id=compute_hash(job.nodes[i])})
+		end
 	end
 	return temp
+end
+function print_tman_table(t)
+	log:print("[ (size "..#t..")")
+	for i=1,#t do
+		log:print("  "..i.." : ".."["..t[i].ip..":"..t[i].port.."] - id: "..t[i].id)
+	end
+	log:print("]")
+end
+
+function compareViewsNumber(temp_predecessor, temp_sucessors, temp_fingers, predecessor, sucessors, fingers)
+	local count = 0
+	if not temp_predecessor.id == predecessor.id then
+		count = count + 1
+	end
+	for i=1, #temp_sucessors do
+		if not temp_sucessors[i] == sucessors[i] then
+			count = count + 1
+		end
+	end
+	for i=1, #temp_fingers do
+		if not temp_fingers[i] == fingers[i] then
+			count = count + 1
+		end
+	end
+	return count
 end
 
 function terminator()
@@ -603,10 +638,9 @@ end
 
 
 function main ()
-	events.sleep(20)
-	testview = job_nodes_to_view()
-	log:print(#testview)
-	-bootstrap_chord()
+	events.sleep(7)
+	bootstrap_chord()
+	log:print(compareViewsNumber(predecessor, successors, finger,extract_view(job_nodes_to_view())))
 	os.exit()
 end
 

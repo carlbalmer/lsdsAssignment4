@@ -27,9 +27,10 @@ debug_level = {
 	rank_view=false,
 	extractMessage=false,
 	merge=false,
-	bootstrap_chord=true,
-	extract_view=true,
-	printClosestAverage=false
+	bootstrap_chord=false,
+	extract_view=false,
+	printClosestAverage=false,
+	printNotOptimal=true
 	}
 
 function logD(message,level)
@@ -570,7 +571,8 @@ function active_tman()
 	else
 		log:print("Tman exchange failed! error message:"..r)
 	end
-	logD("ClosestAverage: cycle "..tman_cycle.." average "..average_closest_tman(),"printClosestAverage")
+	--logD("ClosestAverage: cycle "..tman_cycle.." average "..average_closest_tman(),"printClosestAverage")
+	logD("NotOptimal: cycle "..tman_cycle.." number "..compareViewsNumber(tman_view,job_nodes_to_view()),"printNotOptimal")
 	tman_passive_active_lock:unlock()
 end
 
@@ -745,6 +747,40 @@ end
 ******************************************************************************
 ]]
 
+function compareViewsNumber(v1, v2)
+	local temp_predecessor, temp_sucessors, temp_fingers = extract_view(v1)
+	local predecessor, sucessors, fingers = extract_view(v2)
+	local count = 0
+	log:print(temp_predecessor.id.." "..predecessor.id )
+	if not (temp_predecessor.id == predecessor.id) then
+		log:print(count)
+		count = count + 1
+		log:print(count)
+	end
+	for i=1, #temp_sucessors do
+		if not (temp_sucessors[i].id == sucessors[i].id) then
+			count = count + 1
+		end
+	end
+	for i=1, #temp_fingers do
+		if not (temp_fingers[i].id == fingers[i].id) then
+			count = count + 1
+		end
+	end
+	return count
+end
+
+function job_nodes_to_view()
+	local temp = {}
+	for i=1, #job.nodes do
+		if not job.nodes[i].died then
+			table.insert(temp,{ip=job.nodes[i].ip,port=job.nodes[i].port,id=compute_hash(job.nodes[i])})
+		end
+	end
+	return temp
+end
+
+
 function print_tman_table(t)
 	log:print("[ (size "..#t..")")
 	for i=1,#t do
@@ -763,12 +799,31 @@ function average_closest_tman()
 	return sum/num_successors
 end
 
+function distance(a,b)
+	return math.min(math.abs(a.id-b.id),((2^m)-math.abs(a.id-b.id)))
+end
+
 function is_follower(a,b)
 	if ((a-b+(2^m))%(2^m)) < (2^(m-1)) then
 		return true
 	else
 		return false
 	end
+end
+
+function churn_server()
+	networkSize = #job.nodes
+	churnfactor = 4
+	for i=2, (networkSize/churnfactor) do
+		events.thread(function() rpc.call(job.nodes[i], "please_stop") end)
+		events.sleep(tman_active_thread_period/((networkSize/churnfactor)/25))
+		log:print(tostring(job.nodes[i].died))
+	end
+end
+
+function please_stop()
+	job.me.died = true
+	os.exit
 end
 
 
@@ -800,13 +855,15 @@ function main ()
 	end
 	log:print("Initializing tman")
 	tman_init()
-	events.sleep(400)
-	log:print("bootstraping chord")
-	bootstrap_chord()
-	if not (debug and debug_level["bootstrap_chord"]) then
-		print_chord()
-	end
-	os.exit()
+	if job.positon = 1 then
+		events.thread(churn_server)
+	--events.sleep(400)
+	--log:print("bootstraping chord")
+	--bootstrap_chord()
+	--if not (debug and debug_level["bootstrap_chord"]) then
+	--	print_chord()
+	--end
+	--os.exit()
 end
 
 events.thread(main)  
