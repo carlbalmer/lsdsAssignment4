@@ -29,7 +29,7 @@ debug_level = {
 	merge=false,
 	bootstrap_chord=false,
 	extract_view=false,
-	printClosestAverage=false,
+	printClosestAverage=true,
 	printNotOptimal=true
 	}
 
@@ -564,15 +564,14 @@ function active_tman()
 	logD("Extracting message","active_tman")
 	local message = extractMessage(tman_view,p)
 	logD("Sending message","active_tman")
-	local ok, r = rpc.acall(p, {"passive_tman", message, n})
+	local ok, r = rpc.acall(p, {"passive_tman", message, n},tman_active_thread_period/2)
 	if ok then
 		logD("merging answer into view","active_tman")
 		tman_view = merge(r[1],tman_view)
 	else
 		log:print("Tman exchange failed! error message:"..r)
 	end
-	--logD("ClosestAverage: cycle "..tman_cycle.." average "..average_closest_tman(),"printClosestAverage")
-	logD("NotOptimal: cycle "..tman_cycle.." number "..compareViewsNumber(tman_view,job_nodes_to_view()),"printNotOptimal")
+	events.thread(evaluation_thread)
 	tman_passive_active_lock:unlock()
 end
 
@@ -747,6 +746,11 @@ end
 ******************************************************************************
 ]]
 
+function evaluation_thread()
+	--logD("NotOptimal: cycle "..tman_cycle.." number "..compareViewsNumber(tman_view,job_nodes_to_view()),"printNotOptimal")
+	logD("ClosestAverage: cycle "..tman_cycle.." average "..average_closest_tman(),"printClosestAverage")
+end
+
 function compareViewsNumber(v1, v2)
 	local temp_predecessor, temp_sucessors, temp_fingers = extract_view(v1)
 	local predecessor, sucessors, fingers = extract_view(v2)
@@ -809,6 +813,19 @@ function is_follower(a,b)
 	end
 end
 
+function searchQuerry()
+	countHops(find_predecessor(compute_hash(tostring(math.random()))).id, 0)
+end
+
+-- counts the hops needet to reach another node in the ring
+function countHops(id, index)
+  if id == n.id then
+    logS("hops="..index)
+  else
+    rpc.call(closest_preceding_finger((id+1)%(2^m)), {'countHops', id, (index +1)})
+  end
+end
+
 --[[
 ******************************************************************************
                          THIS IS WHERE YOUR CODE GOES
@@ -843,6 +860,7 @@ function main ()
 	--	print_chord()
 	--end
 	--os.exit()
+	hop_thread = events.periodic(searchQuerry,2)
 end
 
 events.thread(main)  
