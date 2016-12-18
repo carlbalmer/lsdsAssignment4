@@ -30,7 +30,8 @@ debug_level = {
 	bootstrap_chord=false,
 	extract_view=false,
 	printClosestAverage=true,
-	printNotOptimal=true
+	printNotOptimal=true,
+	printStale=true
 	}
 
 function logD(message,level)
@@ -571,7 +572,7 @@ function active_tman()
 	else
 		log:print("Tman exchange failed! error message:"..r)
 	end
-	events.thread(evaluation_thread)
+	--events.thread(evaluation_thread)
 	tman_passive_active_lock:unlock()
 end
 
@@ -687,7 +688,6 @@ function tman_init()
 	for i=1,#view do
 		table.insert(tman_view,{ip=view[i].peer.ip,port=view[i].peer.port,id=compute_hash(view[i].peer)})
 	end
-	--log:print("My chord ID="..compute_hash(job.me))
 	logD("Initial tman view:","tman_init")
 	if debug and debug_level["tman_init"] then
 		print_tman_table(tman_view)
@@ -698,9 +698,9 @@ function tman_init()
 	active_thread_tman = events.periodic(active_tman,tman_active_thread_period)
 end
 
-function bootstrap_chord()
+function bootstrap_chord(v)
 	logD("extracting chord links from tman view","bootstrap_chord")
-	predecessor, successors, finger = extract_view(tman_view)
+	predecessor, successors, finger = extract_view(v)
 	if debug and debug_level["bootstrap_chord"] then
 		print_chord()
 	end
@@ -731,7 +731,7 @@ function extract_view(view)
 	logD("extracting fingers","extract_view")
 	for i=1, #temp_fingers do
 		for j=1, #temp do
-			if temp_fingers[i].start < temp[j].id then
+			if temp_fingers[i].start <= temp[j].id then
 				temp_fingers[i].node = temp[j]
 				break
 			end
@@ -764,11 +764,33 @@ function compareViewsNumber(v1, v2)
 		end
 	end
 	for i=1, #temp_fingers do
-		if not (temp_fingers[i].id == fingers[i].id) then
+		if not (temp_fingers[i].node.id == fingers[i].node.id) then
 			count = count + 1
 		end
 	end
 	return count
+end
+
+function staleReferenceNumber()
+	churn_cycle = churn_cycle +1
+	local count = 0
+	--logD("Pinging predecessor ID="..predecessor.id,"printStale")
+	if not rpc.ping(predecessor,5) then
+		count = count + 1
+	end
+	for i=1, #successors do
+		--logD("Pinging successor "..i.."ID="..successors[i].id, "printStale")
+		if not rpc.ping(successors[i],5) then
+			count = count + 1
+		end
+	end
+	for i=1, #finger do
+		--logD("Pinging finger "..i.." ID="..finger[i].node.id, "printStale")
+		if not rpc.ping(finger[i].node,5) then
+			count = count + 1
+		end
+	end
+	logD("StaleReferences: cycle "..churn_cycle.." count "..count,"printStale")
 end
 
 function job_nodes_to_view()
@@ -778,7 +800,6 @@ function job_nodes_to_view()
 			table.insert(temp,{ip=job.nodes[i].ip,port=job.nodes[i].port,id=compute_hash(job.nodes[i])})
 		end
 	end
-	log:print("Alive nodes"..#temp)
 	return temp
 end
 
@@ -814,15 +835,15 @@ function is_follower(a,b)
 end
 
 function searchQuerry()
-	countHops(find_predecessor(compute_hash(tostring(math.random()))).id, 0)
+	countHops(find_predecessor(compute_hash({ip=tostring(math.random()),port=math.random()})).id, 0)
 end
 
 -- counts the hops needet to reach another node in the ring
 function countHops(id, index)
   if id == n.id then
-    logS("hops="..index)
+    log:print("hops="..index)
   else
-    rpc.call(closest_preceding_finger((id+1)%(2^m)), {'countHops', id, (index +1)})
+    rpc.acall(closest_preceding_finger((id+1)%(2^m)), {'countHops', id, (index +1)},2)
   end
 end
 
@@ -834,7 +855,7 @@ end
 
 function terminator()
 	log:print("node "..job.position.." will end in 10min")
-	events.sleep(600)
+	events.sleep(1800)
 	log:print("Terminator Exiting")
 	os.exit()
 end
@@ -853,14 +874,21 @@ function main ()
 	end
 	log:print("Initializing tman")
 	tman_init()
-	--events.sleep(400)
-	--log:print("bootstraping chord")
-	--bootstrap_chord()
-	--if not (debug and debug_level["bootstrap_chord"]) then
-	--	print_chord()
-	--end
-	--os.exit()
-	hop_thread = events.periodic(searchQuerry,2)
+	log:print("Waiting for tman to construct overlay")
+	events.sleep(600)
+	log:print("stoping tman")
+	events.kill(active_thread_tman)
+	log:print("bootstraping chord")
+	--bootstrap_chord(job_nodes_to_view())
+	bootstrap_chord(tman_view)
+	if not (debug and debug_level["bootstrap_chord"]) then
+		print_chord()
+	end
+	log:print("waiting for all nodes to bootstrap")
+	events.sleep(60)
+	churn_cycle = 0
+	--eval_thread = events.periodic(searchQuerry,10)
+	eval_thread = events.periodic(searchQuerry,10)
 end
 
 events.thread(main)  
