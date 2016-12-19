@@ -855,7 +855,7 @@ end
 
 function terminator()
 	log:print("node "..job.position.." will end in 10min")
-	events.sleep(1800)
+	events.sleep(1200)
 	log:print("Terminator Exiting")
 	os.exit()
 end
@@ -879,16 +879,15 @@ function main ()
 	log:print("stoping tman")
 	events.kill(active_thread_tman)
 	log:print("bootstraping chord")
-	--bootstrap_chord(job_nodes_to_view())
-	bootstrap_chord(tman_view)
+	bootstrap_chord(job_nodes_to_view())
+	--bootstrap_chord(tman_view)
 	if not (debug and debug_level["bootstrap_chord"]) then
 		print_chord()
 	end
 	log:print("waiting for all nodes to bootstrap")
-	events.sleep(60)
+	events.sleep(120)
 	churn_cycle = 0
-	--eval_thread = events.periodic(searchQuerry,10)
-	eval_thread = events.periodic(searchQuerry,10)
+	eval_thread = events.periodic(staleReferenceNumber,20)
 end
 
 events.thread(main)  

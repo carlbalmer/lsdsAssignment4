@@ -1,8 +1,8 @@
 #!/bin/bash - 
 
-for i in {1..50}
+for i in {1..100}
 do
    echo "Killing node $i"
    pkill -n lua
-   sleep 10
+   sleep 5
 done
