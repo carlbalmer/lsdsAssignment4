@@ -745,12 +745,13 @@ end
                          UTILITIES/EVALUATION
 ******************************************************************************
 ]]
-
+--runs the different evaluation functions in a separate thread
 function evaluation_thread()
 	--logD("NotOptimal: cycle "..tman_cycle.." number "..compareViewsNumber(tman_view,job_nodes_to_view()),"printNotOptimal")
 	logD("ClosestAverage: cycle "..tman_cycle.." average "..average_closest_tman(),"printClosestAverage")
 end
 
+--counts the number of difference between two views
 function compareViewsNumber(v1, v2)
 	local temp_predecessor, temp_sucessors, temp_fingers = extract_view(v1)
 	local predecessor, sucessors, fingers = extract_view(v2)
@@ -771,6 +772,7 @@ function compareViewsNumber(v1, v2)
 	return count
 end
 
+--counts the number of stale references
 function staleReferenceNumber()
 	churn_cycle = churn_cycle +1
 	local count = 0
@@ -793,6 +795,7 @@ function staleReferenceNumber()
 	logD("StaleReferences: cycle "..churn_cycle.." count "..count,"printStale")
 end
 
+--returns all active nodes in the network in the same datastructure as the tman view
 function job_nodes_to_view()
 	local temp = {}
 	for i=1, #job.nodes do
@@ -822,10 +825,12 @@ function average_closest_tman()
 	return sum/num_successors
 end
 
+--calculates the distance between two nodes
 function distance(a,b)
 	return math.min(math.abs(a.id-b.id),((2^m)-math.abs(a.id-b.id)))
 end
 
+--returns true if a node succeeds the other (see the chord paper for definton)
 function is_follower(a,b)
 	if ((a-b+(2^m))%(2^m)) < (2^(m-1)) then
 		return true
@@ -834,6 +839,7 @@ function is_follower(a,b)
 	end
 end
 
+--launches a search querry
 function searchQuerry()
 	countHops(find_predecessor(compute_hash({ip=tostring(math.random()),port=math.random()})).id, 0)
 end
